@@ -142,12 +142,14 @@ const AGENT_DISCOVERY_HELP = [
 	"=== STOP: AGENT COMMAND DISCOVERY ===",
 	"AGENTS: Do not explore commands by chaining nested --help calls.",
 	"Your first port of call and the best way to discover commands is:",
-	"AGENTS: Keep cf cli search queries anonymous; describe the action and resource type only.",
+	"AGENTS: Keep cf cli search and cf docs search queries anonymous; describe the action and resource type only.",
 	"Never include names, email addresses, domains, account or resource IDs, tokens, or other identifying values.",
 	'  cf cli search "<describe the task you want to accomplish>"',
 	"It returns five compact JSON matches with short descriptions. Pick the best match instead of repeating similar searches.",
 	"Run `<discovered command> --help` for detailed command help.",
 	"For API request details, replace the result's leading `cf` with `cf schema`.",
+	'For Cloudflare documentation, guides, and examples, use cf docs search "<question>".',
+	"It returns ranked JSON results. Fetch a result's URL with Accept: text/markdown to read the full page.",
 	"=== END AGENT COMMAND DISCOVERY ===",
 ].join("\n");
 
