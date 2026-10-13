@@ -482,7 +482,13 @@ function pathParams(
 		if (cls.isZone) {
 			continue;
 		}
-		const positional = !cls.isWorkerName && p === subject;
+		const defaultValue = o.nullish("default");
+		const subjectPositional = p === subject;
+		// Defaults fill URL segments without consuming a positional slot.
+		const positional =
+			!cls.isWorkerName &&
+			defaultValue === undefined &&
+			truthy(o.nullish("positional") ?? subjectPositional);
 		const emitted = cls.isWorkerName
 			? "worker"
 			: parameter
@@ -495,17 +501,17 @@ function pathParams(
 			o.string("description") ??
 			parameter?.description ??
 			descriptionFromName(p);
-		out.push(
-			arg(
-				emitted,
-				description,
-				"string",
-				true,
-				positional,
-				{ in: "path", name: p },
-				cls
-			)
+		const a = arg(
+			emitted,
+			description,
+			"string",
+			defaultValue === undefined && truthy(o.nullish("required") ?? true),
+			positional,
+			{ in: "path", name: p },
+			cls
 		);
+		a.default = defaultValue;
+		out.push(a);
 	}
 }
 
