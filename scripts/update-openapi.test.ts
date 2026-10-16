@@ -39,7 +39,7 @@ const forgeCredentials = {
 	git_config_parameters: "private git configuration",
 };
 
-await test("Forge release reads are anonymous while cf requests can authenticate", async (context) => {
+await test("Forge latest release reads are anonymous while cf requests can authenticate", async (context) => {
 	const requests: { path: string; authorization: string | null }[] = [];
 	context.mock.method(
 		globalThis,
@@ -49,12 +49,10 @@ await test("Forge release reads are anonymous while cf requests can authenticate
 				path: new URL(url).pathname,
 				authorization: new Headers(init.headers).get("Authorization"),
 			});
-			return Response.json([
-				{
-					tag_name: `openapi@${version}`,
-					assets: [{ name: "openapi.forge.json", id: 123 }],
-				},
-			]);
+			return Response.json({
+				tag_name: `openapi@${version}`,
+				assets: [{ name: "openapi.forge.json", id: 123 }],
+			});
 		}
 	);
 
@@ -64,7 +62,7 @@ await test("Forge release reads are anonymous while cf requests can authenticate
 	});
 	await githubResponse("/repos/cloudflare/cf/pulls", {}, "cf-write-token");
 	assert.deepEqual(requests, [
-		{ path: "/repos/cloudflare/forge/releases", authorization: null },
+		{ path: "/repos/cloudflare/forge/releases/latest", authorization: null },
 		{
 			path: "/repos/cloudflare/cf/pulls",
 			authorization: "Bearer cf-write-token",
@@ -86,58 +84,53 @@ await test("Forge subprocesses receive no GitHub tokens or injected Git credenti
 	assert.deepEqual(environment, originalEnvironment);
 });
 
-await test("releases without the OpenAPI asset are rejected", async (context) => {
-	context.mock.method(globalThis, "fetch", async () =>
-		Response.json([{ tag_name: `openapi@${version}`, assets: [] }])
-	);
-	await assert.rejects(
-		getLatestOpenApiRelease(),
-		/has no openapi\.forge\.json asset/
-	);
-});
-
-await test("OpenAPI polling skips unrelated releases, drafts, and prereleases across pages", async (context) => {
-	const pages: string[] = [];
-	context.mock.method(globalThis, "fetch", async (url: string) => {
-		const target = new URL(url);
-		assert.equal(target.searchParams.get("per_page"), "100");
-		pages.push(target.searchParams.get("page") ?? "");
-		if (pages.length === 1) {
-			return Response.json(
-				Array.from({ length: 100 }, () => ({ tag_name: "v0.2.0" }))
-			);
-		}
-		return Response.json([
-			{ tag_name: `openapi@${"c".repeat(40)}`, draft: true },
-			{ tag_name: `openapi@${"d".repeat(40)}`, prerelease: true },
-			{ tag_name: "openapi@invalid" },
-			{
-				tag_name: `openapi@${version}`,
-				assets: [{ name: "openapi.forge.json" }],
-			},
-			{
-				tag_name: `openapi@${"e".repeat(40)}`,
-				assets: [{ name: "openapi.forge.json" }],
-			},
-		]);
-	});
-	assert.deepEqual(await getLatestOpenApiRelease(), {
-		tag: `openapi@${version}`,
-		version,
-	});
-	assert.deepEqual(pages, ["1", "2"]);
-});
-
-await test("OpenAPI polling reports missing releases and invalid API responses", async (context) => {
-	for (const response of [[], [{ tag_name: "v0.2.0" }], {}]) {
+await test("latest releases without the OpenAPI asset are rejected", async (context) => {
+	for (const assets of [undefined, [], [{ name: "other.json" }]]) {
 		context.mock.method(globalThis, "fetch", async () =>
-			Response.json(response)
+			Response.json({ tag_name: `openapi@${version}`, assets })
 		);
 		await assert.rejects(
 			getLatestOpenApiRelease(),
-			/No published Forge OpenAPI release|response was not an array/
+			/has no openapi\.forge\.json asset/
 		);
 	}
+});
+
+await test("OpenAPI lookup rejects invalid latest releases without scanning history", async (context) => {
+	for (const response of [
+		null,
+		[],
+		{},
+		{ tag_name: 123 },
+		{ tag_name: "v0.2.0" },
+		{ tag_name: "openapi@invalid" },
+		{ tag_name: `openapi@${version}`, draft: true },
+		{ tag_name: `openapi@${version}`, prerelease: true },
+	]) {
+		const requests: string[] = [];
+		context.mock.method(globalThis, "fetch", async (url: string) => {
+			requests.push(new URL(url).pathname);
+			return Response.json(response);
+		});
+		await assert.rejects(
+			getLatestOpenApiRelease(),
+			/not a published OpenAPI release|does not have a valid OpenAPI tag/
+		);
+		assert.deepEqual(requests, ["/repos/cloudflare/forge/releases/latest"]);
+	}
+});
+
+await test("a missing latest release is reported without scanning history", async (context) => {
+	const requests: string[] = [];
+	context.mock.method(globalThis, "fetch", async (url: string) => {
+		requests.push(new URL(url).pathname);
+		return Response.json({ message: "Not Found" }, { status: 404 });
+	});
+	await assert.rejects(
+		getLatestOpenApiRelease(),
+		/GitHub API GET \/repos\/cloudflare\/forge\/releases\/latest failed \(404/
+	);
+	assert.deepEqual(requests, ["/repos/cloudflare/forge/releases/latest"]);
 });
 
 await test("the renamed updater recognizes old and new bot commits while protecting human edits", async (context) => {
@@ -327,12 +320,10 @@ await test("release reads retry failures while consuming the response body", asy
 				})
 			);
 		}
-		return Response.json([
-			{
-				tag_name: `openapi@${version}`,
-				assets: [{ name: "openapi.forge.json", id: 123 }],
-			},
-		]);
+		return Response.json({
+			tag_name: `openapi@${version}`,
+			assets: [{ name: "openapi.forge.json", id: 123 }],
+		});
 	});
 	const result = getLatestOpenApiRelease();
 	await advanceRetry(context, 1000);

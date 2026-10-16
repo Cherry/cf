@@ -293,48 +293,40 @@ export async function getLatestOpenApiRelease(): Promise<{
 	tag: string;
 	version: string;
 }> {
-	for (let page = 1; ; page++) {
-		const query = new URLSearchParams({ per_page: "100", page: String(page) });
-		const releases = await githubRequest(
-			`/repos/${FORGE_REPOSITORY}/releases?${query}`,
-			{},
-			undefined,
-			"application/vnd.github+json",
-			readJson
-		);
-		if (!Array.isArray(releases)) {
-			throw new Error("Forge releases response was not an array");
-		}
-		for (const release of releases) {
-			if (
-				!isObject(release) ||
-				release.draft ||
-				release.prerelease ||
-				typeof release.tag_name !== "string"
-			) {
-				continue;
-			}
-			const match = release.tag_name.match(/^openapi@([0-9a-f]{40})$/);
-			if (!match?.[1]) {
-				continue;
-			}
-			// generate.ts downloads this asset, so never pin a release without it.
-			const hasAsset =
-				Array.isArray(release.assets) &&
-				release.assets.some(
-					(item) => isObject(item) && item.name === OPENAPI_ASSET
-				);
-			if (!hasAsset) {
-				throw new Error(
-					`Forge release ${release.tag_name} has no ${OPENAPI_ASSET} asset`
-				);
-			}
-			return { tag: release.tag_name, version: match[1] };
-		}
-		if (releases.length < 100) {
-			throw new Error("No published Forge OpenAPI release found");
-		}
+	// Forge must keep its latest release marker on the current OpenAPI spec.
+	const release = await githubRequest(
+		`/repos/${FORGE_REPOSITORY}/releases/latest`,
+		{},
+		undefined,
+		"application/vnd.github+json",
+		readJson
+	);
+	if (
+		!isObject(release) ||
+		release.draft ||
+		release.prerelease ||
+		typeof release.tag_name !== "string"
+	) {
+		throw new Error("Latest Forge release is not a published OpenAPI release");
 	}
+	const match = release.tag_name.match(/^openapi@([0-9a-f]{40})$/);
+	if (!match?.[1]) {
+		throw new Error(
+			`Latest Forge release ${release.tag_name} does not have a valid OpenAPI tag`
+		);
+	}
+	// generate.ts downloads this asset, so never pin a release without it.
+	const hasAsset =
+		Array.isArray(release.assets) &&
+		release.assets.some(
+			(item) => isObject(item) && item.name === OPENAPI_ASSET
+		);
+	if (!hasAsset) {
+		throw new Error(
+			`Forge release ${release.tag_name} has no ${OPENAPI_ASSET} asset`
+		);
+	}
+	return { tag: release.tag_name, version: match[1] };
 }
 
 /**
