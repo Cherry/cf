@@ -1,4 +1,7 @@
-import { APIError as WorkersUtilsAPIError } from "@cloudflare/workers-utils";
+import {
+	UserError,
+	APIError as WorkersUtilsAPIError,
+} from "@cloudflare/workers-utils";
 import {
 	afterEach,
 	beforeEach,
@@ -7,7 +10,7 @@ import {
 	it,
 	vi,
 } from "vite-plus/test";
-import { handleError } from "../../lib/errors.js";
+import { handleError, MissingCredentialsError } from "../../lib/errors.js";
 import { ApiError } from "#api";
 
 /**
@@ -49,6 +52,52 @@ describe("handleError", () => {
 	it("returns the same error instance it was given (rethrow contract)", () => {
 		const err = new Error("boom");
 		expect(handleError(err)).toBe(err);
+	});
+
+	it("recommends a temporary account when credentials are missing", () => {
+		handleError(new MissingCredentialsError("No authentication token found."));
+		expect(stderr()).toContain("--temporary-account");
+
+		errSpy.mockClear();
+		handleError(
+			Object.assign(
+				new UserError("Authentication required; wording may change.", {
+					telemetryMessage: "cfetch auth login required",
+				}),
+				{ reason: "no-credentials-non-interactive" }
+			)
+		);
+		expect(stderr()).toContain("--temporary-account");
+	});
+
+	it("does not recommend a temporary account when OAuth credentials expire", () => {
+		errSpy.mockClear();
+		handleError(
+			Object.assign(
+				new UserError(
+					"Not logged in. Your auth token has expired and could not be refreshed, and the environment is non-interactive. Run `cf auth login` in an interactive terminal or set a CLOUDFLARE_API_TOKEN.",
+					{ telemetryMessage: "cfetch auth login required" }
+				),
+				{ reason: "token-expired-non-interactive" }
+			)
+		);
+		expect(stderr()).toContain("cf auth login");
+		expect(stderr()).not.toContain("--temporary-account");
+	});
+
+	it("does not recommend a temporary account for network or unrelated errors", () => {
+		errSpy.mockClear();
+		handleError(
+			new UserError(
+				"Not logged in. Your auth token has expired and could not be refreshed because the Cloudflare auth server could not be reached.",
+				{ telemetryMessage: "cfetch auth login required" }
+			)
+		);
+		expect(stderr()).not.toContain("--temporary-account");
+
+		errSpy.mockClear();
+		handleError(new Error("Request failed"));
+		expect(stderr()).not.toContain("--temporary-account");
 	});
 
 	describe("APIError", () => {

@@ -1,12 +1,4 @@
-import { getAuthFromEnv } from "@cloudflare/workers-auth";
-import {
-	getActiveProfile,
-	getConfigPath,
-	isOAuthLoggedIn,
-	logout,
-	setProfile,
-} from "../../lib/oauth/index.js";
-import { printSuccess } from "../../lib/output.js";
+import { getActiveProfile, logout } from "../../lib/oauth/index.js";
 import { theme } from "../../lib/ui/index.js";
 import { log, printCommands } from "../../lib/ui/log.js";
 import { assertNoProfileFlag } from "./profiles.js";
@@ -33,33 +25,7 @@ const logoutCommand: CommandModule<object, CommonYargsOptions> = {
 			printCommands(`cf auth delete ${activeProfile}`);
 		}
 
-		setProfile("default");
-
-		const hasOAuthTokens = isOAuthLoggedIn();
-		const hasEnvToken =
-			getAuthFromEnv({ allowGlobalAuthKey: false }) !== undefined;
-
-		if (!hasOAuthTokens) {
-			if (hasEnvToken) {
-				log.info(
-					`No cf OAuth credentials found, but ${theme.code("CLOUDFLARE_API_TOKEN")} is set. Unset it to log out.`
-				);
-			} else {
-				log.info("You are not currently logged in. To authenticate, run:");
-				printCommands("cf auth login");
-			}
-			return;
-		}
-
 		await logout("default");
-
-		// workers-auth keeps the stored tokens, and says why, while env
-		// credentials are set.
-		if (hasEnvToken) {
-			return;
-		}
-
-		printSuccess(`Removed OAuth tokens from ${theme.muted(getConfigPath())}`);
 	},
 };
 

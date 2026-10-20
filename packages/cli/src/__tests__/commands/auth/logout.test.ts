@@ -30,36 +30,31 @@ describe("cf auth logout", () => {
 		);
 	});
 
-	it("explains how to log in when not logged in", async () => {
+	it("reports when not logged in", async () => {
 		await runCf(["auth", "logout"], { CLOUDFLARE_API_TOKEN: undefined });
 
 		expect(std.out).toBe("");
-		expect(std.err).toMatchInlineSnapshot(`
-			"●  You are not currently logged in. To authenticate, run:
-
-			   cf auth login"
-		`);
+		expect(std.err).toBe("Not logged in, exiting...");
 	});
 
 	it("points at the environment token when only that is set", async () => {
 		await runCf(["auth", "logout"], { CLOUDFLARE_API_TOKEN: "env-token" });
 
 		expect(std.out).toBe("");
-		expect(std.err).toMatchInlineSnapshot(
-			`"●  No cf OAuth credentials found, but CLOUDFLARE_API_TOKEN is set. Unset it to log out."`
+		expect(std.err).toContain(
+			"You are logged in with an API Token. Unset the CLOUDFLARE_API_TOKEN in the environment to log out."
 		);
 	});
 
-	it("confirms which file the OAuth tokens were removed from", async () => {
+	it("removes the OAuth tokens and confirms logout", async () => {
 		createDefaultProfile();
 		std.setStderrTTY(true);
 
 		await runCf(["auth", "logout"], { CLOUDFLARE_API_TOKEN: undefined });
 
 		expect(std.out).toBe("");
-		expect(std.err).toContain(
-			"✓ Removed OAuth tokens from <cwd>/home/.config/cloudflare/config/default.json"
-		);
+		expect(readAuthConfigFile("default")).toBeUndefined();
+		expect(std.err).toContain("Successfully logged out.");
 	});
 
 	it("keeps the OAuth tokens while the environment token is set", async () => {

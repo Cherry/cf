@@ -4,6 +4,10 @@ import { getGlobalConfigPath } from "@cloudflare/workers-utils";
 import { http, HttpResponse } from "msw/http";
 import { describe, it } from "vite-plus/test";
 import { mockConsoleMethods } from "./helpers/mock-console";
+import {
+	temporaryAccountCachePath,
+	writeTemporaryAccountCache,
+} from "./helpers/mock-temporary-account";
 import { msw } from "./helpers/msw";
 import { runInTempDir } from "./helpers/run-in-tmp";
 import { runWrangler } from "./helpers/run-wrangler";
@@ -27,26 +31,38 @@ function cfAuthFilePath(): string {
 describe("logout", () => {
 	runInTempDir();
 	const std = mockConsoleMethods();
-	// The clack mock drops log lines, so cf's own messages can't be asserted
-	// here. The cf package's auth tests check them with real clack.
 
-	// cf's `loadTokens()` / `loadApiToken()` now resolve their paths via
-	// `homedir()` at call time, so `runInTempDir()`'s HOME stub correctly
-	// isolates token reads to the empty temp directory.
+	// cf shares Wrangler's workers-auth logout messages, but its auth logger
+	// writes them to stderr.
 	it("should exit with a message stating the user is not logged in", async ({
 		expect,
 	}) => {
 		await runWrangler("auth logout", { CLOUDFLARE_API_TOKEN: undefined });
 		expect(std.out).toBe("");
+		expect(std.err).toContain("Not logged in, exiting...");
 	});
 
-	// Env `CLOUDFLARE_API_TOKEN` set with no on-disk credentials in the
-	// stubbed HOME: cf prints the env-var hint on stderr and exits cleanly.
+	it("should clear a cached temporary preview account when not logged in via OAuth", async ({
+		expect,
+	}) => {
+		writeTemporaryAccountCache({ account: {}, claim: {} });
+
+		await runWrangler("auth logout", { CLOUDFLARE_API_TOKEN: undefined });
+
+		expect(std.out).toBe("");
+		expect(std.err).toContain("Cleared temporary preview account.");
+		expect(std.err).not.toContain("Not logged in, exiting...");
+		expect(existsSync(temporaryAccountCachePath())).toBe(false);
+	});
+
 	it("should exit with a message stating the user logged in via API token", async ({
 		expect,
 	}) => {
 		await runWrangler("auth logout", { CLOUDFLARE_API_TOKEN: "DUMMY_TOKEN" });
 		expect(std.out).toBe("");
+		expect(std.err).toContain(
+			"You are logged in with an API Token. Unset the CLOUDFLARE_API_TOKEN in the environment to log out."
+		);
 	});
 
 	// Ported now that token paths resolve via `homedir()` at call time
@@ -83,7 +99,10 @@ describe("logout", () => {
 			})
 		);
 
+		writeTemporaryAccountCache({ account: {}, claim: {} });
+
 		expect(existsSync(authFile)).toBe(true);
+		expect(existsSync(temporaryAccountCachePath())).toBe(true);
 
 		await runWrangler("auth logout", { CLOUDFLARE_API_TOKEN: undefined });
 
@@ -93,6 +112,7 @@ describe("logout", () => {
 		expect(revoked).toBe(true);
 		// And the on-disk token file was removed.
 		expect(existsSync(authFile)).toBe(false);
+		expect(existsSync(temporaryAccountCachePath())).toBe(false);
 	});
 
 	// Wrangler-internal: asserted that `wrangler.jsonc` parsing warnings
