@@ -1,3 +1,4 @@
+import { getAuthFromEnv } from "@cloudflare/workers-auth";
 import {
 	getActiveProfile,
 	getConfigPath,
@@ -5,7 +6,9 @@ import {
 	logout,
 	setProfile,
 } from "../../lib/oauth/index.js";
-import { hint, info, theme, warning } from "../../lib/ui/index.js";
+import { printSuccess } from "../../lib/output.js";
+import { theme } from "../../lib/ui/index.js";
+import { log, printCommands } from "../../lib/ui/log.js";
 import { assertNoProfileFlag } from "./profiles.js";
 import type { CommonYargsOptions } from "../../lib/cli-types.js";
 import type { CommandModule } from "yargs";
@@ -24,55 +27,39 @@ const logoutCommand: CommandModule<object, CommonYargsOptions> = {
 		const activeProfile = getActiveProfile();
 
 		if (activeProfile !== "default") {
-			console.log(
-				warning(
-					`This directory has profile "${activeProfile}" active. \`cf auth logout\` removes the default profile's token, not "${activeProfile}".\n` +
-						`To delete "${activeProfile}", run \`cf auth delete ${activeProfile}\`.`
-				)
+			log.warn(
+				`This directory has profile "${activeProfile}" active. ${theme.code("cf auth logout")} removes the default profile's token, not "${activeProfile}". To delete "${activeProfile}", run:`
 			);
+			printCommands(`cf auth delete ${activeProfile}`);
 		}
 
 		setProfile("default");
 
 		const hasOAuthTokens = isOAuthLoggedIn();
-		const hasEnvToken = !!process.env.CLOUDFLARE_API_TOKEN;
+		const hasEnvToken =
+			getAuthFromEnv({ allowGlobalAuthKey: false }) !== undefined;
 
 		if (!hasOAuthTokens) {
 			if (hasEnvToken) {
-				console.log(
-					info(
-						"No cf OAuth credentials found, but CLOUDFLARE_API_TOKEN environment variable is set."
-					)
+				log.info(
+					`No cf OAuth credentials found, but ${theme.code("CLOUDFLARE_API_TOKEN")} is set. Unset it to log out.`
 				);
-				console.log(info("Unset it with: unset CLOUDFLARE_API_TOKEN"));
 			} else {
-				console.log(info("You are not currently logged in."));
-				console.log(
-					hint(`Run ${theme.code("cf auth login")} to authenticate.`)
-				);
+				log.info("You are not currently logged in. To authenticate, run:");
+				printCommands("cf auth login");
 			}
 			return;
 		}
 
-		console.log(info("Logging out..."));
-
 		await logout("default");
 
-		console.log(
-			`${theme.info("Removed:")} OAuth tokens from ${theme.muted(getConfigPath())}`
-		);
-
+		// workers-auth keeps the stored tokens, and says why, while env
+		// credentials are set.
 		if (hasEnvToken) {
-			console.log("");
-			console.log(
-				warning("CLOUDFLARE_API_TOKEN environment variable is still set.")
-			);
-			console.log(
-				info(
-					"You will remain authenticated via the env var. Unset it with: unset CLOUDFLARE_API_TOKEN"
-				)
-			);
+			return;
 		}
+
+		printSuccess(`Removed OAuth tokens from ${theme.muted(getConfigPath())}`);
 	},
 };
 
