@@ -1,3 +1,4 @@
+import { hasQuietFlag } from "./args.js";
 import { isNonInteractiveOrCI } from "./interactive.js";
 import { supportsColor, theme } from "./ui/theme.js";
 
@@ -25,10 +26,11 @@ function outputPayload(data: unknown): unknown {
 
 /**
  * The `✓` line confirming that a command finished. It prints only when
- * stderr is a terminal; scripts read the exit code instead.
+ * stderr is a terminal and `--quiet` is off; scripts read the exit code
+ * instead.
  */
 export function printSuccess(message: string): void {
-	if (process.stderr.isTTY) {
+	if (process.stderr.isTTY && !hasQuietFlag()) {
 		process.stderr.write(`${theme.success("✓")} ${message}\n`);
 	}
 }
@@ -75,7 +77,7 @@ function formatJson(data: unknown): string {
 
 	// Non-interactive output must remain parseable even when FORCE_COLOR is set.
 	if (
-		isNonInteractiveOrCI() ||
+		isNonInteractiveOrCI(process.stdout) ||
 		!supportsColor() ||
 		json.length > MAX_HIGHLIGHTED_JSON_SIZE
 	) {
