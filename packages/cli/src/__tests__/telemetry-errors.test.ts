@@ -9,6 +9,7 @@ import {
 import { __resetCommandVocabularyForTests } from "../lib/telemetry/command-resolution.js";
 import { captureOutput } from "./helpers/capture-output.js";
 import { runCf } from "./helpers/run-cf.js";
+import type * as InteractiveModule from "../lib/interactive.js";
 import type * as MetadataModule from "../lib/metadata.js";
 import type * as TelemetryModule from "../lib/telemetry/index.js";
 import type { TelemetryDispatcher } from "../lib/telemetry/index.js";
@@ -62,6 +63,16 @@ vi.mock("../lib/metadata.js", async (importOriginal) => {
 vi.mock("../lib/state.js", () => ({
 	readState: () => ({}),
 	updateState,
+}));
+
+vi.mock("../lib/interactive.js", async (importOriginal) => ({
+	...(await importOriginal<typeof InteractiveModule>()),
+	isCI: false,
+}));
+
+vi.mock("../lib/update-check.js", () => ({
+	getUpdateNotice: vi.fn(),
+	maybeStartBackgroundUpdateCheck: vi.fn(),
 }));
 
 describe("telemetry error reporting", () => {
